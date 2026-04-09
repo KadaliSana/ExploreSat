@@ -72,7 +72,7 @@ async def predict(
             ),
         )
 
-    from exploresat.inference.predictor import Predictor
+    from inference.predictor import Predictor
 
     predictor = Predictor(model=model)
     out_path = PREDICTIONS_DIR / f"{job_id}_pred.tif"
@@ -121,7 +121,7 @@ async def download_result(filename: str) -> FileResponse:
 def _load_model():
     """Load the best checkpoint; raise FileNotFoundError if absent."""
     import torch
-    from exploresat.models.segmentation import build_model
+    from models.segmentation import build_model
 
     if not CHECKPOINT_PATH.exists():
         raise FileNotFoundError(f"Checkpoint not found: {CHECKPOINT_PATH}")

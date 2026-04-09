@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from exploresat.models.segmentation import SimpleUNet, build_simple_unet
+from models.segmentation import SimpleUNet, build_simple_unet
 
 
 def test_simple_unet_output_shape():
@@ -36,7 +36,7 @@ def test_build_model_smp():
     """build_model should return an smp model when smp is available."""
     pytest.importorskip("segmentation_models_pytorch",
                         reason="segmentation-models-pytorch not installed")
-    from exploresat.models.segmentation import build_model
+    from models.segmentation import build_model
     model = build_model(architecture="unet", encoder="resnet18",
                         num_classes=6, encoder_weights=None)
     model.eval()
@@ -48,6 +48,6 @@ def test_build_model_smp():
 
 def test_build_model_unknown_arch():
     pytest.importorskip("segmentation_models_pytorch")
-    from exploresat.models.segmentation import build_model
+    from models.segmentation import build_model
     with pytest.raises(ValueError, match="Unknown architecture"):
         build_model(architecture="nonexistent")

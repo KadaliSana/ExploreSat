@@ -12,7 +12,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from exploresat.data.dataset import class_to_rgb_mask, CLASS_NAMES, NUM_CLASSES
+from data.dataset import class_to_rgb_mask, CLASS_NAMES, NUM_CLASSES
 
 
 class Predictor:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import torch
 
-from exploresat.utils.metrics import (
+from utils.metrics import (
     dice_score,
     iou_score,
     mean_iou,

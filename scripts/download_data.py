@@ -8,7 +8,7 @@ python scripts/download_data.py \\
     --backend planetary_computer \\
     --dataset sentinel2 \\
     --bbox 77.0 28.4 77.4 28.8 \\
-    --date-start 2023-06-01 --date-end 2023-09-30 \\
+    --date-start 2025-06-01 --date-end 2025-09-30 \\
     --dest data/raw
 
 # Landsat over Mumbai using GEE (requires --gee-project)
@@ -45,8 +45,8 @@ def parse_args() -> argparse.Namespace:
                    metavar=("LON_MIN", "LAT_MIN", "LON_MAX", "LAT_MAX"),
                    default=[77.0, 28.4, 77.4, 28.8],
                    help="Bounding box in WGS-84")
-    p.add_argument("--date-start", default="2023-01-01")
-    p.add_argument("--date-end",   default="2023-12-31")
+    p.add_argument("--date-start", default="2025-06-01")
+    p.add_argument("--date-end",   default="2025-12-31")
     p.add_argument("--max-cloud",  type=float, default=20.0)
     p.add_argument("--max-items",  type=int,   default=5)
     p.add_argument("--dest",       default="data/raw")
@@ -68,7 +68,7 @@ def main() -> None:
     date_range = (args.date_start, args.date_end)
 
     if args.tile_only:
-        from exploresat.data.download import tile_geotiff
+        from data.download import tile_geotiff
         src_dir = Path(args.src or args.dest)
         tif_files = sorted(src_dir.rglob("*.tif"))
         if not tif_files:
@@ -84,7 +84,7 @@ def main() -> None:
         return
 
     if args.backend == "planetary_computer":
-        from exploresat.data.download import PlanetaryComputerDownloader
+        from data.download import PlanetaryComputerDownloader
         dl = PlanetaryComputerDownloader(dest_dir=args.dest)
         getattr(dl, f"download_{args.dataset}")(
             bbox=bbox,
@@ -95,7 +95,7 @@ def main() -> None:
         if not args.gee_project:
             print("--gee-project is required for the GEE backend.")
             sys.exit(1)
-        from exploresat.data.download import GEEDownloader
+        from data.download import GEEDownloader
         dl = GEEDownloader(project=args.gee_project, dest_dir=args.dest)
         if args.dataset == "dem":
             dl.download_srtm_dem(bbox=bbox)

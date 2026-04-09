@@ -23,7 +23,7 @@ Microsoft Planetary Computer (MPC)
 Quick-start
 -----------
 >>> # Option A – Planetary Computer (no sign-in needed)
->>> from exploresat.data.download import PlanetaryComputerDownloader
+>>> from data.download import PlanetaryComputerDownloader
 >>> dl = PlanetaryComputerDownloader(dest_dir="data/raw")
 >>> dl.download_sentinel2(
 ...     bbox=(77.5, 28.5, 77.8, 28.8),   # lon_min, lat_min, lon_max, lat_max
@@ -33,7 +33,7 @@ Quick-start
 ... )
 
 >>> # Option B – Google Earth Engine
->>> from exploresat.data.download import GEEDownloader
+>>> from data.download import GEEDownloader
 >>> dl = GEEDownloader(project="my-gee-project", dest_dir="data/raw")
 >>> dl.download_sentinel2(
 ...     bbox=(77.5, 28.5, 77.8, 28.8),
@@ -46,6 +46,8 @@ from __future__ import annotations
 
 import os
 import shutil
+from tqdm import tqdm
+from tqdm.dask import TqdmCallback
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -151,7 +153,7 @@ class PlanetaryComputerDownloader:
         outdir.mkdir(parents=True, exist_ok=True)
         saved: List[Path] = []
 
-        for item in items:
+        for item in tqdm(items, desc="  Downloading Sentinel-2", unit="scene"):
             path = self._save_sentinel2_item(
                 item, bands, bbox, resolution, outdir
             )
@@ -228,7 +230,7 @@ class PlanetaryComputerDownloader:
         outdir.mkdir(parents=True, exist_ok=True)
         saved: List[Path] = []
 
-        for item in items:
+        for item in tqdm(items, desc="  Downloading Landsat", unit="scene"):
             path = self._save_stac_item(
                 item, bands, bbox, resolution, outdir,
                 prefix=item.id,
@@ -284,7 +286,8 @@ class PlanetaryComputerDownloader:
             bounds=bbox,
             epsg=4326,
             resolution=resolution / 111_320,   # degrees per metre (approx)
-            dtype="float32",
+            dtype="float64",
+            rescale=False,
         )
         dem_np = stack.squeeze().values
 
@@ -340,15 +343,15 @@ class PlanetaryComputerDownloader:
             print("  No NAIP tiles found.  NAIP only covers the USA.")
             return []
 
+        print(f"  Found {len(items)} scene(s). Downloading …")
         outdir = self.dest_dir / output_subdir
         outdir.mkdir(parents=True, exist_ok=True)
         saved: List[Path] = []
 
-        for item in items:
+        for item in tqdm(items, desc="  Downloading NAIP", unit="scene"):
             signed = planetary_computer.sign(item)
             href = signed.assets["image"].href
             out_path = outdir / f"{item.id}.tif"
-            print(f"  Downloading {item.id} …")
             _stream_cog_to_file(href, str(out_path), bbox)
             saved.append(out_path)
 
@@ -379,11 +382,14 @@ class PlanetaryComputerDownloader:
                 bounds=bbox,
                 epsg=4326,
                 resolution=resolution / 111_320,
-                dtype="float32",
-                fill_value=0,
+                dtype="float64",
+                rescale=False,
             )
             # shape: (time=1, band, H, W) – squeeze time
-            arr = stack.squeeze(dim="time").values  # (band, H, W)
+            with TqdmCallback(desc=f"    {item.id}", leave=False):
+                arr = stack.squeeze(dim="time").values  # (band, H, W)
+            
+            arr = np.nan_to_num(arr, nan=0.0)
 
             # Scale reflectance: Sentinel-2 L2A values are 0–10000
             arr = np.clip(arr / 10000.0, 0, 1).astype(np.float32)
@@ -417,10 +423,19 @@ class PlanetaryComputerDownloader:
                 bounds=bbox,
                 epsg=4326,
                 resolution=resolution / 111_320,
-                dtype="float32",
-                fill_value=0,
+                dtype="float64",
+                rescale=False,
             )
-            arr = stack.squeeze(dim="time").values
+            # shape: (time=1, band, H, W) – squeeze time
+            with TqdmCallback(desc=f"    {prefix}", leave=False):
+                arr = stack.squeeze(dim="time").values
+            
+            arr = np.nan_to_num(arr, nan=0.0)
+
+            # Scale reflectance: Landsat C2 L2 values
+            # (only if it looks like LS8/9 data)
+            if item.collection_id == "landsat-c2-l2":
+                arr = np.clip(arr * 0.0000275 - 0.2, 0, 1).astype(np.float32)
 
             out_path = outdir / f"{prefix}.tif"
             _save_geotiff(arr, bbox, str(out_path), crs="EPSG:4326",
@@ -729,10 +744,16 @@ class GEEDownloader:
             "description": description,
         })
 
-        print(f"  Downloading {out_path.name} …")
         import urllib.request
-        urllib.request.urlretrieve(url, str(out_path))
-        print(f"  Saved to {out_path}")
+        
+        def _progress(count, block_size, total_size):
+            if total_size > 0:
+                pbar.total = total_size
+                pbar.update(block_size)
+
+        with tqdm(unit="B", unit_scale=True, unit_divisor=1024, miniters=1,
+                  desc=f"  {out_path.name}") as pbar:
+            urllib.request.urlretrieve(url, str(out_path), reporthook=_progress)
 
     @staticmethod
     def _bbox_to_ee_geometry(bbox: BBox):

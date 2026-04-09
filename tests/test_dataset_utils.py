@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from exploresat.data.dataset import (
+from data.dataset import (
     CLASS_NAMES,
     ISPRS_PALETTE,
     NUM_CLASSES,

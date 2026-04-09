@@ -1,11 +1,9 @@
-# ExploreSat 🛰️
+# ExploreSat
 
 **Automatic Extraction of Topographical Features from Satellite and Drone Images**
 
 Deep-learning segmentation pipeline that detects buildings, roads, water,
 vegetation, and other topographical features from satellite or drone imagery.
-Built for deployment on an **RTX 3060 laptop** (or any free cloud GPU) and
-designed around entirely **free, non-commercial data sources**.
 
 ---
 
@@ -16,9 +14,8 @@ designed around entirely **free, non-commercial data sources**.
 | **Segmentation models** | U-Net, U-Net++, DeepLabV3+, FPN (via `segmentation-models-pytorch`) |
 | **Pre-trained encoders** | ResNet-34/50, EfficientNet-B3/B4, MobileNet-V2 (ImageNet weights) |
 | **Classes detected** | Impervious surfaces, Buildings, Low vegetation, Trees, Cars, Background |
-| **Data acquisition** | Microsoft Planetary Computer (free, no account) · Google Earth Engine (free account) |
+| **Data acquisition** | Microsoft Planetary Computer  · Google Earth Engine |
 | **Datasets** | Sentinel-2 (10 m), Landsat 8/9 (30 m), SRTM DEM, NAIP (1 m USA), Copernicus DEM |
-| **GPU optimisation** | Automatic Mixed Precision (AMP) – halves VRAM, fits RTX 3060 at batch 8 |
 | **Visualisation** | FastAPI server + Leaflet.js web map · QGIS XYZ tile integration |
 | **Output formats** | Class-index GeoTIFF · colour-coded RGB GeoTIFF · GeoPackage polygons |
 
@@ -218,16 +215,6 @@ List all saved prediction files.
 ```bash
 pytest tests/ -v
 ```
-
----
-
-## Supported Platforms
-
-| Platform | GPU | Status |
-|---|---|---|
-| RTX 3060 laptop (12 GB) | CUDA + AMP | ✅ Recommended |
-| Google Colab / Kaggle | T4 / P100 | ✅ Works |
-| CPU only | – | ✅ Inference only (slow training) |
 
 ---
 

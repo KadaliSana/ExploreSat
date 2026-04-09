@@ -109,7 +109,7 @@ def _run_planetary_computer(
     max_items: int,
     dest_dir: str,
 ) -> None:
-    from exploresat.data.download import PlanetaryComputerDownloader
+    from data.download import PlanetaryComputerDownloader
 
     dl = PlanetaryComputerDownloader(dest_dir=dest_dir)
     if dataset == "sentinel2":
@@ -130,7 +130,7 @@ def _run_gee(
     dest_dir: str,
     gee_project: str,
 ) -> None:
-    from exploresat.data.download import GEEDownloader
+    from data.download import GEEDownloader
 
     dl = GEEDownloader(project=gee_project, dest_dir=dest_dir)
     if dataset == "sentinel2":

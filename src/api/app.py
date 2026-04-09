@@ -4,10 +4,10 @@ ExploreSat FastAPI application.
 Start the server
 ----------------
     # Development (auto-reload):
-    uvicorn exploresat.api.app:app --reload --host 0.0.0.0 --port 8000
+    uvicorn api.app:app --reload --host 0.0.0.0 --port 8000
 
     # Production (4 workers):
-    gunicorn exploresat.api.app:app -k uvicorn.workers.UvicornWorker \\
+    gunicorn api.app:app -k uvicorn.workers.UvicornWorker \\
         --workers 4 --bind 0.0.0.0:8000
 
 QGIS integration
@@ -36,7 +36,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi import Request
 from fastapi.responses import HTMLResponse
 
-from exploresat.api.routers import download, inference, tiles
+from api.routers import download, inference, tiles
 
 # ---------------------------------------------------------------------------
 # App factory
@@ -93,7 +93,9 @@ templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def root(request: Request) -> HTMLResponse:
     """Serve the interactive Leaflet.js map."""
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(
+        request=request, name="index.html", context={"request": request}
+    )
 
 
 # ---------------------------------------------------------------------------

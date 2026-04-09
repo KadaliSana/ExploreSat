@@ -63,7 +63,7 @@ def load_all(server: str = SERVER_URL) -> None:
 
     Call from the QGIS Python Console::
 
-        from exploresat.qgis.load_layers import load_all
+        from qgis.load_layers import load_all
         load_all()
     """
     _ensure_qgis()

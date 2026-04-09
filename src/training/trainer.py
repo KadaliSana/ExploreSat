@@ -15,14 +15,11 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 
-from exploresat.utils.metrics import mean_iou, pixel_accuracy
+from utils.metrics import mean_iou, pixel_accuracy
 
 
 class Trainer:
     """Train a segmentation model with automatic mixed precision (AMP).
-
-    AMP halves GPU memory usage, allowing larger batch sizes on an
-    RTX 3060 (12 GB VRAM).
 
     Parameters
     ----------
@@ -34,8 +31,6 @@ class Trainer:
         Initial learning rate.
     weight_decay:
         AdamW weight-decay regularisation.
-    device:
-        ``"cuda"``, ``"cpu"``, or ``"auto"`` (detects GPU automatically).
     checkpoint_dir:
         Directory to save model checkpoints.
     use_amp:

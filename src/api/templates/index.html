@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ExploreSat – Topographical Intelligence</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+  <link rel="stylesheet" href="/static/css/style.css?v=1.1" />
+  
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+
+  <header>
+    <div class="logo">
+      <i data-lucide="satellite" style="color:var(--accent-primary); width: 24px; height: 24px;"></i>
+      <h1>ExploreSat</h1>
+    </div>
+    <div class="header-status">
+      <div class="status-indicator"></div>
+      <span>System Online</span>
+      <span style="margin-left: 12px; opacity: 0.5;">v0.1.0</span>
+    </div>
+  </header>
+
+  <main id="app">
+    <!-- Map Canvas -->
+    <div id="map"></div>
+
+    <!-- Overlay UI -->
+    <div class="overlay-panel">
+      
+      <!-- Data Source Card -->
+      <section class="glass-card">
+        <div class="panel-header">
+          <h2><i data-lucide="database" style="display:inline-block; vertical-align:middle; width:16px; margin-right:8px;"></i> Acquisition</h2>
+        </div>
+        
+        <div class="input-group">
+          <label>Backend Provider</label>
+          <select id="dl-backend">
+            <option value="planetary_computer">Microsoft Planetary Computer</option>
+            <option value="gee">Google Earth Engine</option>
+          </select>
+        </div>
+
+        <div class="input-group">
+          <label>Satellite Dataset</label>
+          <select id="dl-dataset">
+            <option value="sentinel2">Sentinel-2 (10m)</option>
+            <option value="landsat">Landsat 8/9 (30m)</option>
+            <option value="dem">DEM / Elevation</option>
+            <option value="naip">NAIP Aerial (1m)</option>
+          </select>
+        </div>
+
+        <div class="flex-row">
+          <div class="input-group">
+            <label>Start Date</label>
+            <input type="date" id="dl-start" value="2024-01-01" />
+          </div>
+          <div class="input-group">
+            <label>End Date</label>
+            <input type="date" id="dl-end" value="2024-12-31" />
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label>Cloud Threshold (%)</label>
+          <input type="number" id="dl-cloud" value="15" min="0" max="100" />
+        </div>
+
+        <div id="gee-project-box" class="input-group" style="display:none;">
+          <label>GCP Project ID</label>
+          <input type="text" id="dl-gee-project" placeholder="my-project-id" />
+        </div>
+
+        <button class="primary" onclick="downloadData()">
+          <i data-lucide="download-cloud"></i> Fetch Source Data
+        </button>
+        <div id="dl-status" class="status-msg"></div>
+      </section>
+
+      <!-- AI Inference Card -->
+      <section class="glass-card">
+        <div class="panel-header">
+          <h2><i data-lucide="cpu" style="display:inline-block; vertical-align:middle; width:16px; margin-right:8px;"></i> AI Extraction</h2>
+        </div>
+
+        <div class="input-group">
+          <label>Source Image (GeoTIFF/PNG)</label>
+          <input type="file" id="infer-file" accept=".tif,.tiff,.png,.jpg,.jpeg" />
+        </div>
+
+        <div class="input-group" style="display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" id="infer-vector" style="width:16px; height:16px; margin:0;">
+          <label for="infer-vector" style="margin:0; cursor:pointer;">Generate Vector Polygons (.gpkg)</label>
+        </div>
+
+        <button class="primary" onclick="runInference()">
+          <i data-lucide="zap"></i> Extract Features
+        </button>
+        <div id="infer-status" class="status-msg"></div>
+      </section>
+
+      <!-- Layer Management Card -->
+      <section class="glass-card" style="flex: 1; min-height: 0; display: flex; flex-direction: column;">
+        <div class="panel-header">
+          <h2><i data-lucide="layers" style="display:inline-block; vertical-align:middle; width:16px; margin-right:8px;"></i> Intelligence Layers</h2>
+          <button class="secondary" onclick="refreshLayers()" style="width: auto; padding: 4px 8px;">
+            <i data-lucide="refresh-cw" style="width:12px;"></i>
+          </button>
+        </div>
+        <div id="layer-list" class="layer-list"></div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Scripts -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+  <script src="/static/js/app.js?v=1.1"></script>
+  <script>
+    // Initialize Lucide icons
+    lucide.createIcons();
+    
+    // Toggle GEE project visibility
+    document.getElementById('dl-backend').addEventListener('change', (e) => {
+      document.getElementById('gee-project-box').style.display = e.target.value === 'gee' ? 'block' : 'none';
+    });
+  </script>
+</body>
+</html>

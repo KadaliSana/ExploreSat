@@ -11,7 +11,7 @@ pytest.importorskip("httpx", reason="httpx not installed")
 
 from fastapi.testclient import TestClient
 
-from exploresat.api.app import app
+from api.app import app
 
 client = TestClient(app)
 

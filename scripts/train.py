@@ -56,9 +56,9 @@ def main() -> None:
     import torch
     from torch.utils.data import DataLoader, random_split
 
-    from exploresat.data.dataset import TopographyDataset
-    from exploresat.models.segmentation import build_model
-    from exploresat.training.trainer import Trainer
+    from data.dataset import TopographyDataset
+    from models.segmentation import build_model
+    from training.trainer import Trainer
 
     # ---- Augmentations ----
     train_transform = A.Compose([
@@ -112,7 +112,7 @@ def main() -> None:
             num_classes=args.num_classes,
         )
     except ImportError:
-        from exploresat.models.segmentation import build_simple_unet
+        from models.segmentation import build_simple_unet
         print("segmentation-models-pytorch not found – using built-in SimpleUNet.")
         model = build_simple_unet(
             in_channels=args.in_channels,

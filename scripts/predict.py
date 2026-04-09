@@ -51,7 +51,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     import torch
-    from exploresat.inference.predictor import Predictor
+    from inference.predictor import Predictor
 
     model = _load_model(args)
 
@@ -96,7 +96,7 @@ def _load_model(args: argparse.Namespace):
     ckpt_path = Path(args.checkpoint)
 
     try:
-        from exploresat.models.segmentation import build_model
+        from models.segmentation import build_model
         model = build_model(
             architecture=args.arch,
             encoder=args.encoder,
@@ -105,7 +105,7 @@ def _load_model(args: argparse.Namespace):
             encoder_weights=None,
         )
     except ImportError:
-        from exploresat.models.segmentation import build_simple_unet
+        from models.segmentation import build_simple_unet
         model = build_simple_unet(
             in_channels=args.in_channels,
             num_classes=args.num_classes,

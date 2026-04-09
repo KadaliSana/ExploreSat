@@ -55,7 +55,7 @@ def main() -> None:
         import os
         os.execvp("gunicorn", [
             "gunicorn",
-            "exploresat.api.app:app",
+            "api.app:app",
             "-k", "uvicorn.workers.UvicornWorker",
             "--workers", str(args.workers),
             "--bind", f"{args.host}:{args.port}",
@@ -67,7 +67,7 @@ def main() -> None:
         print(f"  Swagger:   http://localhost:{args.port}/docs")
         print(f"  QGIS tile: http://localhost:{args.port}/tiles/{{layer}}/{{z}}/{{x}}/{{y}}.png")
         uvicorn.run(
-            "exploresat.api.app:app",
+            "api.app:app",
             host=args.host,
             port=args.port,
             reload=args.reload,
