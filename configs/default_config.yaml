@@ -1,0 +1,60 @@
+# ============================================================
+# ExploreSat – Default Configuration
+# ============================================================
+
+# ----- Dataset -----
+data:
+  root: "data/processed"           # tiled image/label pairs
+  image_size: 512                  # square tile size (px)
+  num_classes: 6
+  num_workers: 4
+  # Per-channel normalisation (ImageNet defaults)
+  mean: [0.485, 0.456, 0.406]
+  std:  [0.229, 0.224, 0.225]
+
+# ----- Model -----
+model:
+  architecture: "unet"             # unet | unet++ | deeplabv3+ | fpn
+  encoder: "resnet34"              # resnet34 | resnet50 | efficientnet-b3
+  encoder_weights: "imagenet"      # imagenet | null
+  in_channels: 3                   # 3=RGB, 4=RGBI
+  num_classes: 6
+
+# ----- Training -----
+training:
+  epochs: 50
+  batch_size: 8                    # fits RTX 3060 (12 GB) with AMP
+  lr: 1e-4
+  weight_decay: 1e-4
+  use_amp: true                    # automatic mixed precision
+  val_split: 0.15
+  test_split: 0.05
+  checkpoint_dir: "checkpoints"
+
+# ----- Inference -----
+inference:
+  tile_size: 512
+  overlap: 64
+  checkpoint: "checkpoints/best_model.pth"
+  output_dir: "data/predictions"
+  export_rgb: true
+  export_vector: true
+
+# ----- API Server -----
+api:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 1                       # increase for production
+  reload: false
+
+# ----- Download -----
+download:
+  dest_dir: "data/raw"
+  # Microsoft Planetary Computer (no account needed)
+  planetary_computer:
+    max_cloud_cover: 20
+    max_items: 5
+  # Google Earth Engine (requires account + project)
+  gee:
+    project: ""                    # fill in your GCP project ID
+    max_cloud_cover: 20
