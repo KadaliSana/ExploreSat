@@ -74,9 +74,6 @@ ExploreSat/
 pip install -r requirements.txt
 ```
 
-> **RTX 3060 tip:** PyTorch with CUDA support is required for GPU training.
-> Install from https://pytorch.org/ with the correct CUDA version first.
-
 ### 2. Download satellite data
 
 **Option A – Microsoft Planetary Computer (no account needed)**
@@ -207,14 +204,6 @@ List all available layers.
 
 ### `GET /inference/results`
 List all saved prediction files.
-
----
-
-## Running Tests
-
-```bash
-pytest tests/ -v
-```
 
 ---
 
