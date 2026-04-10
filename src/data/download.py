@@ -60,6 +60,24 @@ import numpy as np
 BBox = Tuple[float, float, float, float]   # (lon_min, lat_min, lon_max, lat_max)
 DateRange = Tuple[str, str]                 # ("YYYY-MM-DD", "YYYY-MM-DD")
 
+# Sentinel-2 Tile IDs found in LandCoverNet Asia (Full 92 master list)
+ASIA_LANDCOVERNET_TILES = [
+    "36SWF", "36SXH", "37SFU", "37TFJ", "38PMV", "38TLL", "38UQU",
+    "39RYM", "39TXM", "39UUS", "40TES", "40UEB", "41TLL", "41TMH",
+    "41TMN", "41TNE", "41VNE", "42RYS", "42SXG", "42TUM", "42UVA",
+    "42UVD", "43QBD", "43SCS", "43SER", "43SGA", "43TFL", "43UET",
+    "44QMG", "44RKV", "44RLQ", "44TLN", "44TNL", "45RTP", "45RWM",
+    "45TWG", "45TYH", "45UXT", "45UXV", "45VXD", "46REP", "46REU",
+    "46RFV", "46TDT", "46TGR", "46UGV", "47QKC", "47RLN", "47RPQ",
+    "47TPL", "47TQM", "47ULB", "47ULP", "47UMA", "47UNS", "48MTE",
+    "48QTK", "48QWF", "48QZM", "48RTR", "48SVA", "48SWH", "48TXL",
+    "48UUA", "49QCE", "49TFJ", "49TFK", "50MLC", "50MRA", "50MRV",
+    "50SLB", "50SPF", "50TLP", "50TNT", "50UMF", "51NYG", "51PWM",
+    "51QUG", "51TUK", "51UUB", "51UXB", "52TDL", "52TES", "52UEA",
+    "53SKU", "53TLM", "53UMB", "53UNS", "54MUT", "54MYA", "57UWA",
+    "57VVE"
+]
+
 
 # ===========================================================================
 # Microsoft Planetary Computer – no account required
@@ -458,6 +476,147 @@ class PlanetaryComputerDownloader:
                 "Missing packages for Planetary Computer downloader.\n"
                 f"Install with: pip install {' '.join(missing)}"
             )
+
+
+# ===========================================================================
+# LandCoverNet – Global Annual Land Cover Classification
+# ===========================================================================
+
+class LandCoverNetDownloader:
+    """Download LandCoverNet Asia subset from Source Cooperative.
+    
+    This downloader fetches paired Sentinel-2 bands and consensus labels
+    for the year 2018. It is optimized for the Asian continent.
+    """
+
+    BASE_URL = "https://data.source.coop/radiantearth/landcovernet/landcovernet_as/data/v1.0/2018"
+
+    def __init__(self, dest_dir: str | Path = "data/raw") -> None:
+        self.dest_dir = Path(dest_dir) / "landcovernet_asia"
+        self.dest_dir.mkdir(parents=True, exist_ok=True)
+
+    def download_asia_subset(self, max_chips_per_tile: int = -1, 
+                              tiles: List[str] = None) -> List[Path]:
+        """Download Chips for the Asia region."""
+        import requests
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        
+        tiles = tiles or ASIA_LANDCOVERNET_TILES
+        saved_paths: List[Path] = []
+
+        print(f"[LandCoverNet] Downloading Asia subset (Max: {'All' if max_chips_per_tile==-1 else max_chips_per_tile}) to {self.dest_dir}...")
+        
+        tile_pbar = tqdm(total=len(tiles), desc="  Tiles", unit="tile")
+        
+        def process_tile(tile_id):
+            tile_pbar.write(f"  -> Fetching Tile {tile_id}...")
+            local_paths = []
+            curr_chip = 0
+            consecutive_failures = 0
+            max_failures = 2 # Stop after 2 missing chips to be safe
+            
+            while True:
+                if max_chips_per_tile > 0 and curr_chip >= max_chips_per_tile:
+                    break
+                    
+                chip_folder = f"{curr_chip:02d}"
+                chip_id = f"{tile_id}_{chip_folder}"
+                chip_dest_dir = self.dest_dir / tile_id / chip_folder
+                
+                # ... existing logic ...
+                label_filename = f"{chip_id}_2018_LC_10m.tif"
+                label_url = f"{self.BASE_URL}/{tile_id}/{chip_folder}/{label_filename}"
+                label_dest = chip_dest_dir / label_filename
+                
+                if not label_dest.exists():
+                    try:
+                        head = requests.head(label_url, timeout=10)
+                        if head.status_code == 404:
+                            consecutive_failures += 1
+                            if consecutive_failures >= max_failures:
+                                break
+                            curr_chip += 1
+                            continue
+                    except Exception:
+                        break
+                
+                consecutive_failures = 0
+                download_success = True
+                try:
+                    self._download_file(label_url, label_dest)
+                except Exception:
+                    download_success = False
+                    curr_chip += 1
+                    continue
+
+                csv_url = f"{self.BASE_URL}/{tile_id}/{chip_folder}/{chip_id}_labeling_dates.csv"
+                try:
+                    resp = requests.get(csv_url, timeout=10)
+                    resp.raise_for_status()
+                    content = resp.text
+                    lines = [l for l in content.splitlines() if ',' in l]
+                    dates = [l.split(',')[1] for l in lines if l.split(',')[0].isdigit()]
+                    
+                    if not dates:
+                        download_success = False
+                        curr_chip += 1
+                        continue
+                        
+                    date_folder = dates[-5] if len(dates) >= 5 else dates[0]
+                    full_date_id = f"{chip_id}_{date_folder}"
+                except Exception:
+                    download_success = False
+                    curr_chip += 1
+                    continue
+                        
+                s2_base_url = f"{self.BASE_URL}/{tile_id}/{chip_folder}/S2/{full_date_id}"
+                try:
+                    for band in ["B04", "B03", "B02", "B08"]:
+                        band_filename = f"{full_date_id}_{band}_10m.tif"
+                        band_url = f"{s2_base_url}/{band_filename}"
+                        band_dest = chip_dest_dir / "S2_bands" / f"{chip_id}_{band}.tif"
+                        self._download_file(band_url, band_dest)
+                except Exception:
+                    download_success = False
+                
+                if download_success:
+                    local_paths.append(chip_dest_dir)
+                    
+                curr_chip += 1
+
+            tile_pbar.write(f"  <- Completed Tile {tile_id} ({len(local_paths)} chips)")
+            return local_paths
+
+        # Run multiple tiles concurrently
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = {executor.submit(process_tile, t): t for t in tiles}
+            for future in as_completed(futures):
+                try:
+                    res = future.result()
+                    if res:
+                        saved_paths.extend(res)
+                except Exception:
+                    pass
+                tile_pbar.update(1)
+
+        tile_pbar.close()
+        print(f"  Downloaded {len(saved_paths)} chips to {self.dest_dir}")
+        return saved_paths
+
+    def _download_file(self, url: str, dest_path: Path):
+        """Download using requests directly."""
+        import requests
+        if dest_path.exists():
+            return
+
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        r = requests.get(url, stream=True, timeout=20)
+        r.raise_for_status()
+        
+        with open(dest_path, 'wb') as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
 
 
 # ===========================================================================

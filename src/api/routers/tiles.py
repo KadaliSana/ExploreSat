@@ -39,15 +39,8 @@ _SEARCH_DIRS = [
     Path("data/raw"),
 ]
 
-# Colour palette for class-index rasters (ISPRS Potsdam / Vaihingen)
-_CLASS_COLOURS = np.array([
-    [255, 255, 255],   # 0 – Impervious surfaces
-    [0,   0,   255],   # 1 – Buildings
-    [0,   255, 255],   # 2 – Low vegetation
-    [0,   255,   0],   # 3 – Trees
-    [255, 255,   0],   # 4 – Cars
-    [255,   0,   0],   # 5 – Background / clutter
-], dtype=np.uint8)
+from data.dataset import LANDCOVERNET_PALETTE
+_CLASS_COLOURS = np.array(LANDCOVERNET_PALETTE, dtype=np.uint8)
 
 
 # ---------------------------------------------------------------------------
@@ -88,6 +81,10 @@ async def get_tile(layer: str, z: int, x: int, y: int) -> Response:
     try:
         png_bytes = _render_tile(tif_path, z, x, y)
     except Exception as exc:
+        if "TileOutsideBounds" in type(exc).__name__:
+            return Response(status_code=204)
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500,
                             detail=f"Tile render error: {exc}") from exc
 
@@ -134,11 +131,17 @@ def _render_tile_riotiler(tif_path: Path, z: int, x: int, y: int) -> bytes:
         # Single-band: treat as class-index map and colourise
         rgb = _colourise_class_map(data[0])
     elif data.shape[0] >= 3:
-        # Multi-band: use first three bands as RGB, stretch to uint8
-        rgb = _stretch_to_uint8(data[:3])
+        if data.dtype == np.uint8:
+            rgb = np.transpose(data[:3], (1, 2, 0))
+        else:
+            # Multi-band: use first three bands as RGB, stretch to uint8
+            rgb = _stretch_to_uint8(data[:3])
     else:
-        rgb = np.stack([data[0]] * 3, axis=-1)
-        rgb = _stretch_to_uint8(rgb.transpose(2, 0, 1)).transpose(1, 2, 0)
+        if data.dtype == np.uint8:
+            rgb = np.stack([data[0]] * 3, axis=-1)
+        else:
+            rgb = np.stack([data[0]] * 3, axis=-1)
+            rgb = _stretch_to_uint8(rgb.transpose(2, 0, 1)).transpose(1, 2, 0)
 
     # Apply nodata mask as alpha
     alpha = mask
@@ -184,7 +187,10 @@ def _render_tile_rasterio(tif_path: Path, z: int, x: int, y: int) -> bytes:
     if bands == 1:
         rgb = _colourise_class_map(data[0].astype(np.uint8))
     else:
-        rgb = _stretch_to_uint8(data)
+        if data.dtype == np.uint8:
+            rgb = np.transpose(data, (1, 2, 0))
+        else:
+            rgb = _stretch_to_uint8(data)
 
     pil_img = Image.fromarray(rgb, mode="RGB")
     buf = io.BytesIO()
@@ -208,7 +214,8 @@ def _stretch_to_uint8(data: np.ndarray) -> np.ndarray:
     out = np.zeros((data.shape[1], data.shape[2], 3), dtype=np.uint8)
     for i in range(min(data.shape[0], 3)):
         band = data[i].astype(np.float32)
-        lo, hi = np.percentile(band[band > 0], [2, 98]) if band.any() else (0, 1)
+        valid = band[band > 0]
+        lo, hi = np.percentile(valid, [2, 98]) if len(valid) > 0 else (0, 1)
         stretched = np.clip((band - lo) / max(hi - lo, 1e-6) * 255, 0, 255)
         out[:, :, i] = stretched.astype(np.uint8)
     return out

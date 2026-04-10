@@ -39,7 +39,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--backend", choices=["planetary_computer", "gee"],
                    default="planetary_computer")
     p.add_argument("--dataset",
-                   choices=["sentinel2", "landsat", "dem", "naip"],
+                   choices=["sentinel2", "landsat", "dem", "naip", "landcovernet_asia"],
                    default="sentinel2")
     p.add_argument("--bbox", nargs=4, type=float,
                    metavar=("LON_MIN", "LAT_MIN", "LON_MAX", "LAT_MAX"),
@@ -49,6 +49,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--date-end",   default="2025-12-31")
     p.add_argument("--max-cloud",  type=float, default=20.0)
     p.add_argument("--max-items",  type=int,   default=5)
+    p.add_argument("--max-chips",  type=int,   default=1,
+                   help="Max chips per tile for LandCoverNet (use -1 for all)")
     p.add_argument("--dest",       default="data/raw")
     p.add_argument("--gee-project", default="",
                    help="GCP project ID (GEE backend only)")
@@ -83,7 +85,12 @@ def main() -> None:
             )
         return
 
-    if args.backend == "planetary_computer":
+    if args.dataset == "landcovernet_asia":
+        from data.download import LandCoverNetDownloader
+        dl = LandCoverNetDownloader(dest_dir=args.dest)
+        dl.download_asia_subset(max_chips_per_tile=args.max_chips)
+
+    elif args.backend == "planetary_computer":
         from data.download import PlanetaryComputerDownloader
         dl = PlanetaryComputerDownloader(dest_dir=args.dest)
         getattr(dl, f"download_{args.dataset}")(

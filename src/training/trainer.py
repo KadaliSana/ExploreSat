@@ -1,5 +1,5 @@
 """
-Training loop with mixed-precision support (ideal for RTX 3060).
+Training loop for segmentation models.
 """
 
 from __future__ import annotations
@@ -10,16 +10,43 @@ from typing import Optional
 
 import torch
 import torch.nn as nn
-from torch.cuda.amp import GradScaler, autocast
+import torch.nn.functional as F
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
-
 from utils.metrics import mean_iou, pixel_accuracy
 
 
+class DiceLoss(nn.Module):
+    def __init__(self, smooth=1.0):
+        super(DiceLoss, self).__init__()
+        self.smooth = smooth
+
+    def forward(self, logits, targets):
+        num_classes = logits.shape[1]
+        probs = F.softmax(logits.float(), dim=1)
+        
+        # Convert targets to one-hot: (B, H, W) -> (B, C, H, W)
+        targets_one_hot = F.one_hot(targets.clamp(min=0), num_classes).permute(0, 3, 1, 2).float()
+        
+        # Mask out ignore_index (-1) if necessary
+        mask = (targets >= 0).float().unsqueeze(1)
+        probs = probs * mask
+        targets_one_hot = targets_one_hot * mask
+
+        dims = (0, 2, 3)
+        intersection = torch.sum(probs * targets_one_hot, dims)
+        cardinality = torch.sum(probs + targets_one_hot, dims)
+        
+        dice = (2. * intersection + self.smooth) / (cardinality + self.smooth + 1e-7)
+        return 1 - dice.mean()
+    
+    def __repr__(self):
+        return f"DiceLoss(smooth={self.smooth})"
+
+
 class Trainer:
-    """Train a segmentation model with automatic mixed precision (AMP).
+    """Train a segmentation model.
 
     Parameters
     ----------
@@ -33,8 +60,6 @@ class Trainer:
         AdamW weight-decay regularisation.
     checkpoint_dir:
         Directory to save model checkpoints.
-    use_amp:
-        Enable automatic mixed precision (recommended on CUDA).
     """
 
     def __init__(
@@ -45,7 +70,7 @@ class Trainer:
         weight_decay: float = 1e-4,
         device: str = "auto",
         checkpoint_dir: str | Path = "checkpoints",
-        use_amp: bool = True,
+        **kwargs,
     ) -> None:
         if device == "auto":
             device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -54,12 +79,12 @@ class Trainer:
         self.num_classes = num_classes
         self.checkpoint_dir = Path(checkpoint_dir)
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
-        self.use_amp = use_amp and (self.device.type == "cuda")
 
-        self.criterion = nn.CrossEntropyLoss(ignore_index=-1)
+        self.ce_criterion = nn.CrossEntropyLoss(ignore_index=-1)
+        self.dice_criterion = DiceLoss()
+        
         self.optimizer = AdamW(model.parameters(), lr=lr,
                                weight_decay=weight_decay)
-        self.scaler = GradScaler(enabled=self.use_amp)
 
     # ------------------------------------------------------------------
 
@@ -130,37 +155,54 @@ class Trainer:
     def _train_epoch(self, loader: DataLoader) -> float:
         self.model.train()
         total_loss = 0.0
+        valid_batches = 0
         for images, labels in loader:
             images = images.to(self.device, non_blocking=True)
             labels = labels.to(self.device, non_blocking=True)
+
+            # Skip batches where ALL labels are ignored (-1)
+            if (labels >= 0).sum() == 0:
+                continue
+
             self.optimizer.zero_grad(set_to_none=True)
-            with autocast(enabled=self.use_amp):
-                logits = self.model(images)
-                loss = self.criterion(logits, labels)
-            self.scaler.scale(loss).backward()
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
+            outputs = self.model(images)
+            loss_ce = self.ce_criterion(outputs, labels)
+            loss_dice = self.dice_criterion(outputs, labels)
+            loss = 0.5 * loss_ce + 0.5 * loss_dice
+
+            # Guard against NaN loss – skip batch instead of corrupting weights
+            if not torch.isfinite(loss):
+                continue
+
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+            self.optimizer.step()
             total_loss += loss.item()
-        return total_loss / max(len(loader), 1)
+            valid_batches += 1
+        return total_loss / max(valid_batches, 1)
 
     def _val_epoch(self, loader: DataLoader):
         self.model.eval()
         total_loss = 0.0
         all_preds, all_targets = [], []
+        valid_batches = 0
         with torch.no_grad():
             for images, labels in loader:
                 images = images.to(self.device, non_blocking=True)
                 labels = labels.to(self.device, non_blocking=True)
-                with autocast(enabled=self.use_amp):
-                    logits = self.model(images)
-                    loss = self.criterion(logits, labels)
-                total_loss += loss.item()
+                logits = self.model(images)
+                loss_ce = self.ce_criterion(logits, labels)
+                loss_dice = self.dice_criterion(logits, labels)
+                loss = 0.5 * loss_ce + 0.5 * loss_dice
+                if torch.isfinite(loss):
+                    total_loss += loss.item()
+                    valid_batches += 1
                 all_preds.append(logits.cpu())
                 all_targets.append(labels.cpu())
 
         preds = torch.cat(all_preds)
         targets = torch.cat(all_targets)
-        val_loss = total_loss / max(len(loader), 1)
+        val_loss = total_loss / max(valid_batches, 1)
         val_miou = mean_iou(preds, targets, self.num_classes)
         val_acc = pixel_accuracy(preds, targets)
         return val_loss, val_miou, val_acc

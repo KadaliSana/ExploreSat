@@ -9,8 +9,10 @@ RTX 3060 (12 GB VRAM) guidance
 --------------------------------
 - ``encoder = "resnet34"``   → ~190 MB  (recommended default)
 - ``encoder = "resnet50"``   → ~280 MB
+- ``encoder = "resnet101"``  → ~450 MB  (High VRAM usage)
 - ``encoder = "efficientnet-b3"`` → ~170 MB
-- ``encoder = "efficientnet-b5"`` → ~230 MB
+- ``encoder = "xception"``   → ~210 MB
+- ``encoder = "mit_b2"``     → ~250 MB  (Transformer-based)
 
 All encoders are pre-trained on ImageNet (free weights).
 """
@@ -37,7 +39,7 @@ ARCHITECTURES = {
     "unet": "Unet",
     "unet++": "UnetPlusPlus",
     "deeplabv3+": "DeepLabV3Plus",
-    "fpn": "FPN",
+    "segformer": "Segformer",
     "pspnet": "PSPNet",
     "linknet": "Linknet",
     "manet": "MAnet",
@@ -47,6 +49,11 @@ ENCODERS = {
     "resnet18": "resnet18",
     "resnet34": "resnet34",
     "resnet50": "resnet50",
+    "resnet101": "resnet101",
+    "xception": "xception",
+    "mit_b0": "mit_b0",
+    "mit_b2": "mit_b2",
+    "mit_b5": "mit_b5",
     "efficientnet-b3": "efficientnet-b3",
     "efficientnet-b4": "efficientnet-b4",
     "mobilenet-v2": "mobilenet_v2",
@@ -70,7 +77,7 @@ def build_model(
     Parameters
     ----------
     architecture:
-        One of ``"unet"``, ``"unet++"``, ``"deeplabv3+"``, ``"fpn"``,
+        One of ``"unet"``, ``"unet++"``, ``"deeplabv3+"``, ``"segformer"``,
         ``"pspnet"``, ``"linknet"``, ``"manet"``.
     encoder:
         Backbone name, e.g. ``"resnet34"`` or ``"efficientnet-b3"``.

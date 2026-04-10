@@ -29,21 +29,21 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Train ExploreSat segmentation model")
     p.add_argument("--data",        default="data/processed",
                    help="Dataset root (must contain images/ and labels/)")
+    p.add_argument("--dataset-type", default="isprs",
+                   choices=["isprs", "landcovernet"])
     p.add_argument("--arch",        default="unet",
-                   choices=["unet", "unet++", "deeplabv3+", "fpn",
+                   choices=["unet", "unet++", "deeplabv3+", "segformer",
                              "pspnet", "linknet", "manet"])
     p.add_argument("--encoder",     default="resnet34")
-    p.add_argument("--in-channels", type=int, default=3)
+    p.add_argument("--in-channels", type=int, default=0) # 0 means use dataset default
     p.add_argument("--num-classes", type=int, default=6)
     p.add_argument("--image-size",  type=int, default=512)
     p.add_argument("--epochs",      type=int, default=50)
     p.add_argument("--batch-size",  type=int, default=8)
-    p.add_argument("--lr",          type=float, default=1e-4)
+    p.add_argument("--lr",          type=float, default=5e-5)
     p.add_argument("--weight-decay", type=float, default=1e-4)
     p.add_argument("--device",      default="auto",
                    choices=["auto", "cuda", "cpu"])
-    p.add_argument("--no-amp",      action="store_true",
-                   help="Disable automatic mixed precision")
     p.add_argument("--checkpoint-dir", default="checkpoints")
     p.add_argument("--workers",     type=int, default=4)
     return p.parse_args()
@@ -56,7 +56,7 @@ def main() -> None:
     import torch
     from torch.utils.data import DataLoader, random_split
 
-    from data.dataset import TopographyDataset
+    from data.dataset import TopographyDataset, LandCoverNetDataset
     from models.segmentation import build_model
     from training.trainer import Trainer
 
@@ -70,19 +70,29 @@ def main() -> None:
     ])
 
     # ---- Datasets ----
+    ds_class = TopographyDataset if args.dataset_type == "isprs" else LandCoverNetDataset
+    default_classes = 6 if args.dataset_type == "isprs" else 8
+    num_classes = args.num_classes if args.num_classes != 6 else default_classes
+    
+    # Default in_channels based on dataset
+    if args.in_channels == 0:
+        in_channels = 3 if args.dataset_type == "isprs" else 4
+    else:
+        in_channels = args.in_channels
+
     try:
-        train_ds = TopographyDataset(
+        train_ds = ds_class(
             root=args.data, split="train",
             image_size=args.image_size, transform=train_transform,
         )
-        val_ds = TopographyDataset(
+        val_ds = ds_class(
             root=args.data, split="val",
             image_size=args.image_size,
         )
     except (FileNotFoundError, RuntimeError) as exc:
         # Fall back to a random split when no split files exist
         print(f"Note: {exc} – using random 85/15 split.")
-        full_ds = TopographyDataset(
+        full_ds = ds_class(
             root=args.data, image_size=args.image_size,
             transform=train_transform,
         )
@@ -95,6 +105,7 @@ def main() -> None:
     train_loader = DataLoader(
         train_ds, batch_size=args.batch_size, shuffle=True,
         num_workers=args.workers, pin_memory=True,
+        drop_last=True,
     )
     val_loader = DataLoader(
         val_ds, batch_size=args.batch_size, shuffle=False,
@@ -108,26 +119,25 @@ def main() -> None:
         model = build_model(
             architecture=args.arch,
             encoder=args.encoder,
-            in_channels=args.in_channels,
-            num_classes=args.num_classes,
+            in_channels=in_channels,
+            num_classes=num_classes,
         )
     except ImportError:
         from models.segmentation import build_simple_unet
         print("segmentation-models-pytorch not found – using built-in SimpleUNet.")
         model = build_simple_unet(
             in_channels=args.in_channels,
-            num_classes=args.num_classes,
+            num_classes=num_classes,
         )
 
     # ---- Trainer ----
     trainer = Trainer(
         model=model,
-        num_classes=args.num_classes,
+        num_classes=num_classes,
         lr=args.lr,
         weight_decay=args.weight_decay,
         device=args.device,
         checkpoint_dir=args.checkpoint_dir,
-        use_amp=not args.no_amp,
     )
 
     history = trainer.fit(train_loader, val_loader, epochs=args.epochs)

@@ -54,29 +54,31 @@ class Predictor:
 
     @torch.no_grad()
     def predict_image(self, image: np.ndarray) -> np.ndarray:
-        """Run inference on an RGB image array.
-
-        Parameters
-        ----------
-        image:
-            uint8 RGB array ``(H, W, 3)``.
-
-        Returns
-        -------
-        np.ndarray
-            Class-index prediction map ``(H, W)``.
-        """
+        """Run inference on an RGB image array."""
         h, w = image.shape[:2]
         stride = self.tile_size - self.overlap
-        num_classes = NUM_CLASSES
 
-        # Accumulate soft probability maps + counts for blending
-        prob_map = np.zeros((num_classes, h, w), dtype=np.float32)
+        # Dynamically determine expected input channels from model's first layer
+        try:
+            expected_c = next(self.model.parameters()).shape[1]
+            if image.shape[-1] < expected_c:
+                pad_width = expected_c - image.shape[-1]
+                image = np.pad(image, ((0,0), (0,0), (0, pad_width)), mode="constant", constant_values=0)
+        except Exception:
+            pass
+
+        prob_map = None
         count_map = np.zeros((1, h, w), dtype=np.float32)
 
-        # Pad image so every tile fits completely
-        pad_h = (stride - h % stride) % stride
-        pad_w = (stride - w % stride) % stride
+        # Pad image so that it is at least tile_size, and h,w are completely covered
+        pad_h = max(0, self.tile_size - h)
+        pad_w = max(0, self.tile_size - w)
+        
+        if (h + pad_h - self.tile_size) % stride != 0:
+            pad_h += stride - ((h + pad_h - self.tile_size) % stride)
+        if (w + pad_w - self.tile_size) % stride != 0:
+            pad_w += stride - ((w + pad_w - self.tile_size) % stride)
+
         padded = np.pad(image, ((0, pad_h), (0, pad_w), (0, 0)), mode="reflect")
         ph, pw = padded.shape[:2]
 
@@ -84,17 +86,23 @@ class Predictor:
             for x in range(0, pw - self.tile_size + 1, stride):
                 tile = padded[y:y + self.tile_size, x:x + self.tile_size]
                 logits = self._infer_tile(tile)   # (C, tile_size, tile_size)
+                
+                if prob_map is None:
+                    num_classes = logits.shape[0]
+                    prob_map = np.zeros((num_classes, h, w), dtype=np.float32)
+                
                 probs = F.softmax(torch.from_numpy(logits), dim=0).numpy()
 
                 y2 = min(y + self.tile_size, h)
                 x2 = min(x + self.tile_size, w)
-                ty = y2 - y
-                tx = x2 - x
 
-                prob_map[:, y:y2, x:x2] += probs[:, :ty, :tx]
-                count_map[:, y:y2, x:x2] += 1.0
+                if y < h and x < w:
+                    ty = y2 - y
+                    tx = x2 - x
+                    prob_map[:, y:y2, x:x2] += probs[:, :ty, :tx]
+                    count_map[:, y:y2, x:x2] += 1.0
 
-        count_map = np.clip(count_map, 1, None)
+        count_map = np.clip(count_map, 1e-6, None)
         prob_map /= count_map
         return prob_map.argmax(axis=0).astype(np.uint8)
 
@@ -136,7 +144,7 @@ class Predictor:
 
         with rasterio.open(src_path) as src:
             meta = src.meta.copy()
-            bands = min(src.count, 3)
+            bands = src.count
             data = src.read(list(range(1, bands + 1)))
             data = np.transpose(data, (1, 2, 0))
             if data.dtype != np.uint8:
@@ -150,7 +158,7 @@ class Predictor:
         pred = self.predict_image(data)
 
         # Save class-index raster
-        meta.update({"count": 1, "dtype": "uint8", "compress": "lzw"})
+        meta.update({"count": 1, "dtype": "uint8", "compress": "lzw", "nodata": 0})
         with rasterio.open(out_path, "w", **meta) as dst:
             dst.write(pred[np.newaxis, ...])
         print(f"  Class map saved: {out_path}")
@@ -159,7 +167,7 @@ class Predictor:
             rgb_path = out_path.with_name(out_path.stem + "_rgb.tif")
             rgb = class_to_rgb_mask(pred)
             rgb_meta = meta.copy()
-            rgb_meta.update({"count": 3, "dtype": "uint8"})
+            rgb_meta.update({"count": 3, "dtype": "uint8", "nodata": 0})
             with rasterio.open(rgb_path, "w", **rgb_meta) as dst:
                 dst.write(np.transpose(rgb, (2, 0, 1)))
             print(f"  RGB visualisation saved: {rgb_path}")
@@ -174,7 +182,13 @@ class Predictor:
     def _infer_tile(self, tile: np.ndarray) -> np.ndarray:
         """Normalise and run the model on a single tile."""
         img = tile.astype(np.float32) / 255.0
-        img = (img - self.mean) / self.std
+        
+        # Dynamically pad mean/std if array has more channels (e.g., 4-channel RGBI)
+        c = img.shape[-1]
+        mean = np.pad(self.mean, (0, max(0, c - len(self.mean))), constant_values=0.0) if c > len(self.mean) else self.mean[:c]
+        std = np.pad(self.std, (0, max(0, c - len(self.std))), constant_values=1.0) if c > len(self.std) else self.std[:c]
+        
+        img = (img - mean) / std
         tensor = torch.from_numpy(img.transpose(2, 0, 1)).unsqueeze(0)
         tensor = tensor.to(self.device)
         with torch.cuda.amp.autocast(

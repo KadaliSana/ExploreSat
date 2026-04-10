@@ -77,12 +77,14 @@ class ExploreSatApp {
     legend.onAdd = () => {
       const div = L.DomUtil.create('div', 'glass-card legend');
       const classes = [
-        ['#ffffff', 'Impervious surfaces'],
-        ['#0000ff', 'Buildings'],
-        ['#00ffff', 'Low vegetation'],
-        ['#00ff00', 'Trees'],
-        ['#ffff00', 'Cars'],
-        ['#ff0000', 'Background / clutter'],
+        ['#000000', 'No Data'],
+        ['#0000ff', 'Water'],
+        ['#d2b48c', 'Natural Bare Ground'],
+        ['#ff0000', 'Artificial Bare Ground'],
+        ['#006400', 'Woody Vegetation'],
+        ['#228b22', 'Cultivated Vegetation'],
+        ['#9acd32', '(Semi) Natural Vegetation'],
+        ['#ffffff', 'Permanent Snow/Ice'],
       ];
       div.innerHTML = '<strong style="color:var(--accent-primary);display:block;margin-bottom:8px;font-size:0.85rem;">Classes</strong>' +
         classes.map(([c, n]) =>

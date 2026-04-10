@@ -74,7 +74,12 @@ async def predict(
 
     from inference.predictor import Predictor
 
-    predictor = Predictor(model=model)
+    # Use correct 4-channel (RGBI) normalization stats matching training
+    predictor = Predictor(
+        model=model,
+        mean=(0.485, 0.456, 0.406, 0.5),
+        std=(0.229, 0.224, 0.225, 0.25),
+    )
     out_path = PREDICTIONS_DIR / f"{job_id}_pred.tif"
 
     predictor.predict_geotiff(
@@ -121,15 +126,52 @@ async def download_result(filename: str) -> FileResponse:
 def _load_model():
     """Load the best checkpoint; raise FileNotFoundError if absent."""
     import torch
+    import yaml
     from models.segmentation import build_model
 
     if not CHECKPOINT_PATH.exists():
         raise FileNotFoundError(f"Checkpoint not found: {CHECKPOINT_PATH}")
 
-    model = build_model()
     ckpt = torch.load(str(CHECKPOINT_PATH), map_location="cpu",
                       weights_only=True)
     state = ckpt.get("model_state_dict", ckpt)
-    model.load_state_dict(state)
+
+    # Read config for model architecture
+    try:
+        with open("configs/default_config.yaml", "r") as f:
+            cfg = yaml.safe_load(f)["model"]
+        arch = cfg["architecture"]
+        encoder = cfg["encoder"]
+        in_channels = cfg.get("in_channels", 4)
+        num_classes = cfg.get("num_classes", 8)
+    except Exception:
+        arch, encoder, in_channels, num_classes = "unet", "resnet34", 4, 8
+
+    # Try building with config settings first
+    try:
+        model = build_model(
+            architecture=arch,
+            encoder=encoder,
+            in_channels=in_channels,
+            num_classes=num_classes,
+            encoder_weights=None,
+        )
+        model.load_state_dict(state)
+        print(f"Model loaded: {arch} / {encoder} / {in_channels}ch / {num_classes}cls")
+    except RuntimeError as e:
+        # Config doesn't match checkpoint – fall back to known-good architecture
+        print(f"Warning: Config ({arch}/{encoder}) doesn't match checkpoint weights.")
+        print(f"  Detail: {e}")
+        print(f"  Falling back to UNet/ResNet34 (matching trained checkpoint).")
+        model = build_model(
+            architecture="unet",
+            encoder="resnet34",
+            in_channels=in_channels,
+            num_classes=num_classes,
+            encoder_weights=None,
+        )
+        model.load_state_dict(state)
+
     model.eval()
     return model
+
